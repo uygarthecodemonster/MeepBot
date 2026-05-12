@@ -1,0 +1,13 @@
+# --- Python environment ---
+venv/
+.env
+__pycache__/
+*.pyc
+
+# --- Google OAuth secrets (CRITICAL) ---
+credentials.json
+token.json
+
+# --- OS-specific files ---
+.DS_Store
+Thumbs.db
