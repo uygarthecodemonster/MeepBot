@@ -122,6 +122,33 @@ async def emails(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as error:
         await update.message.reply_text(f"⚠️ Failed to fetch emails: {error}")
 
+async def send_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args)<2:
+        await update.message.reply_text("⚠️ Usage: /send @username Your message here")
+        return
+    
+    target_username = context.args[0]
+
+    message_text = ' '.join(context.args[1:])
+
+    with sqlite3.connect('meepbot.db') as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT chat_id FROM users WHERE username = ?', (target_username,))
+        result = cursor.fetchone()
+    
+    if not result:
+        await update.message.reply_text(f"❌ Who the fuck is {target_username}? They haven't texted me yet.")
+        return
+    
+    target_chat_id = result[0]
+
+    try:
+        await context.bot.send_message(chat_id=target_chat_id, text=message_text)
+        await update.message.reply_text(f"✅ I sent your message to {target_username}, Boss! Don't worry.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Sorry Boss, I could not send the message to {target_username} because of {e}")
+    
+
 
     
 
@@ -140,6 +167,9 @@ if __name__ == '__main__':
 
     emails_handler = CommandHandler('emails', emails)
     app.add_handler(emails_handler)
+
+    send_handler = CommandHandler('send', send_message)
+    app.add_handler(send_handler)
 
     print("Meep Bot is up and running!")
     app.run_polling()
