@@ -17,13 +17,38 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
 
+#SQLite imports
+import sqlite3
+
+def setup_database():
+    conn = sqlite3.connect('meepbot.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            username TEXT PRIMARY KEY,
+            chat_id INTEGER
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+setup_database()
 load_dotenv()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text="Yo! I'm Meep Bot, your only real friend. How you doin today, Boss?"
-    )
+    user = update.effective_user
+    chat_id = update.effective_chat.id
+    username = user.username
+
+    if username:
+        conn = sqlite3.connect('meepbot.db')
+        cursor = conn.cursor()
+        cursor.execute('INSERT OR IGNORE INTO users (username, chat_id) VALUES (?, ?)', (f"@{username}", chat_id))
+
+        conn.commit()
+        conn.close()
+
+    await update.message.reply_text(f"Yo, I am Meep Bot, {user.first_name}! I will never forget you, and I will always be here to serve you!")
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
