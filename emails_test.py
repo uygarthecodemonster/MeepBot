@@ -3,8 +3,10 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+from email.utils import parsedate_to_datetime
 
-SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
+
+SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 
 def get_unread_emails():
     creds = None
@@ -47,9 +49,12 @@ def get_unread_emails():
                 if header['name'] == 'From':
                     sender = header['value']
                 if header['name'] == 'Date':
-                    date = header['value']
+                    raw_date = header['value']               
+                    dt_object = parsedate_to_datetime(raw_date)
+                    local_dt = dt_object.astimezone() 
+                    clean_date = local_dt.strftime("%b %d at %H:%M")
 
-            print(f"From: {sender}, Subject: {subject}, Date: {date}")
+            print(f"From: {sender}, Subject: {subject}, Date: {clean_date}")
 
     except Exception as e:
         print(f"An error occurred: {e}")
