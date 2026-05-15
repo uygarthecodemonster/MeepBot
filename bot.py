@@ -122,33 +122,70 @@ async def emails(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as error:
         await update.message.reply_text(f"⚠️ Failed to fetch emails: {error}")
 
-async def send_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def send(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args)<2:
         await update.message.reply_text("⚠️ Usage: /send @username Your message here")
         return
     
-    target_username = context.args[0]
+    targets = []
+    message_words = []
+    is_broadcast_all = False
 
-    message_text = ' '.join(context.args[1:])
+    if context.args[0].lower() == '@all':
+        is_broadcast_all = True
+        message_words = " ".join(context.args[1:]) 
+    else:
+        parsing_usernames = True
+        for arg in context.args:
+            if arg.startswith('@') and parsing_usernames:
+                targets.append(arg)
+            else:
+                parsing_usernames = False
+                message_words.append(arg)
+        
+        message_words = " ".join(message_words)
+
+    if not message_words:
+        await update.message.reply_text("⚠️ You forgot to include a message dumbass!")
+        return
+
+    chat_ids_to_send = []
 
     with sqlite3.connect('meepbot.db') as conn:
         cursor = conn.cursor()
-        cursor.execute('SELECT chat_id FROM users WHERE username = ?', (target_username,))
-        result = cursor.fetchone()
-    
-    if not result:
-        await update.message.reply_text(f"❌ Who the fuck is {target_username}? They haven't texted me yet.")
+        if is_broadcast_all:
+            cursor.execute("SELECT username, chat_id FROM users")
+            results = cursor.fetchall()
+            users_to_send = results 
+        else:
+            placeholder = ','.join('?' * len(targets)) 
+            query = f"SELECT username, chat_id FROM users WHERE username IN ({placeholder})"
+            cursor.execute(query, targets)
+            results = cursor.fetchall()
+
+            found_usernames = [row[0] for row in results]
+            missing = [user for user in targets if user not in found_usernames]
+            if missing:
+                await update.message.reply_text(f"⚠️ I couldn't find these motherfuckers: {', '.join(missing)}")
+
+            users_to_send = results 
+
+    if not users_to_send:
+        await update.message.reply_text("⚠️ I fucking don't know any of those people you mentioned, moron!")
         return
-    
-    target_chat_id = result[0]
+            
+    usernames_success = []
 
-    try:
-        await context.bot.send_message(chat_id=target_chat_id, text=message_text)
-        await update.message.reply_text(f"✅ I sent your message to {target_username}, Boss! Don't worry.")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Sorry Boss, I could not send the message to {target_username} because of {e}")
-    
+    await update.message.reply_text(f"🚀 Sending message to {len(users_to_send)} user(s)...")
 
+    for username, chat_id in users_to_send:
+        try:
+            await context.bot.send_message(chat_id=chat_id, text=f"📢 **Message from {update.effective_user.username}:**\n{message_words}", parse_mode='Markdown')
+            usernames_success.append(username)
+        except Exception as e:
+            print(f"I failed to send message to {chat_id} because of {e}")
+        
+    await update.message.reply_text(f"✅ Your voice is heard by {', '.join(usernames_success)}.")
 
     
 
@@ -168,7 +205,7 @@ if __name__ == '__main__':
     emails_handler = CommandHandler('emails', emails)
     app.add_handler(emails_handler)
 
-    send_handler = CommandHandler('send', send_message)
+    send_handler = CommandHandler('send', send)
     app.add_handler(send_handler)
 
     print("Meep Bot is up and running!")
