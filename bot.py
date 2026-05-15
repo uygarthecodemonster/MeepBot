@@ -2,9 +2,9 @@
 import os
 from email.utils import parsedate_to_datetime
 
-# Telegram imports
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+# Telegram/UI imports
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, CallbackQueryHandler, ConversationHandler, MessageHandler, filters
 
 # Environment variables
 from dotenv import load_dotenv
@@ -19,6 +19,9 @@ from google.auth.transport.requests import Request
 
 #SQLite imports
 import sqlite3
+
+ASKING_NAME, ASKING_DEP = range(2)
+ASKING_USERS, ASKING_MESSAGE = range(2, 4)
 
 def setup_database():
     conn = sqlite3.connect('meepbot.db')
@@ -122,6 +125,69 @@ async def emails(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as error:
         await update.message.reply_text(f"⚠️ Failed to fetch emails: {error}")
 
+async def start_sending(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    await query.edit_message_text("Who do you want to send this to?\n\n(Type usernames like `@steve @boss` or type `@all`)")
+    return ASKING_USERS
+
+async def ask_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    users_input = update.message.text
+    context.user_data['targets'] = users_input
+    await update.message.reply_text("What do you want to say to them? 🤔")
+    return ASKING_MESSAGE
+
+async def execute_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message_to_send = update.message.text
+    targets_input = context.user_data['targets']
+
+    targets = []
+    is_broadcast_all = False
+
+    if targets_input.lower() == '@all' or targets_input.lower() == 'all':
+        is_broadcast_all = True
+    else:
+        targets = targets_input.split()
+
+    chat_ids_to_send = []
+
+    with sqlite3.connect('meepbot.db') as conn:
+        cursor = conn.cursor()
+        if is_broadcast_all:
+            cursor.execute("SELECT username, chat_id FROM users")
+            results = cursor.fetchall()
+            users_to_send = results 
+        else:
+            placeholder = ','.join('?' * len(targets)) 
+            query = f"SELECT username, chat_id FROM users WHERE username IN ({placeholder})"
+            cursor.execute(query, targets)
+            results = cursor.fetchall()
+
+            found_usernames = [row[0] for row in results]
+            missing = [user for user in targets if user not in found_usernames]
+            if missing:
+                await update.message.reply_text(f"⚠️ I couldn't find these motherfuckers: {', '.join(missing)}")
+
+            users_to_send = results 
+
+    if not users_to_send:
+        await update.message.reply_text("⚠️ I fucking don't know any of those people you mentioned, moron!")
+        return
+            
+    usernames_success = []
+
+    await update.message.reply_text(f"🚀 Sending message to {len(users_to_send)} user(s)...")
+
+    for username, chat_id in users_to_send:
+        try:
+            await context.bot.send_message(chat_id=chat_id, text=f"📢 **Message from {update.effective_user.username}:**\n{message_to_send}", parse_mode='Markdown')
+            usernames_success.append(username)
+        except Exception as e:
+            print(f"I failed to send message to {chat_id} because of {e}")
+        
+    await update.message.reply_text(f"✅ Your voice is heard by {', '.join(usernames_success)}.")
+
 async def send(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args)<2:
         await update.message.reply_text("⚠️ Usage: /send @username Your message here")
@@ -187,7 +253,37 @@ async def send(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     await update.message.reply_text(f"✅ Your voice is heard by {', '.join(usernames_success)}.")
 
-    
+
+async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        InlineKeyboardButton("📚 Check Schedule", callback_data="btn_schedule"),
+        InlineKeyboardButton("📩 Check Emails", callback_data="btn_emails"),
+        InlineKeyboardButton("📢 Broadcast", callback_data="btn_send")
+    ],[
+        InlineKeyboardButton("🚫 Cancel", callback_data="btn_cancel")
+    ]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text('🥶 I am the Iceman. I am a pretty nice man. 🧊', reply_markup=reply_markup)
+
+async def handle_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    clicked_button = query.data
+
+    if clicked_button == "btn_schedule":
+        await query.edit_message_text("Checking your schedule, Boss! Just give me a sec...")
+    if clicked_button == "btn_emails":
+        await query.edit_message_text("Checking your emails, Boss! Just give me a sec...")
+    if clicked_button == "btn_send":
+        await query.edit_message_text("To send a message to everyone, use: /send @all Your message here\n\nTo send a message to specific users, use: /send @username1 @username2 Your message here")
+    if clicked_button == "btn_cancel":
+        await query.edit_message_text("Menu cancelled. I'm just a bot, I don't have feelings, but if I did, I would shot you in the head. 😵🔫")
+
+
+async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Alright, cancelled. I'm just a bot, I don't have feelings, but if I did, I would shot you in the head. 😵🔫")
+    return ConversationHandler.END
 
 
 if __name__ == '__main__':
@@ -207,6 +303,22 @@ if __name__ == '__main__':
 
     send_handler = CommandHandler('send', send)
     app.add_handler(send_handler)
+
+    menu_handler = CommandHandler('menu', show_menu)
+    app.add_handler(menu_handler)
+  
+
+    broadcast_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(start_sending, pattern='^btn_send$')],
+        states={
+            ASKING_USERS: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_message)],
+            ASKING_MESSAGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, execute_send)]
+        },
+        fallbacks=[CommandHandler('cancel', cancel_conversation)]
+    )
+    app.add_handler(broadcast_handler)
+
+    app.add_handler(CallbackQueryHandler(handle_button_click))
 
     print("Meep Bot is up and running!")
     app.run_polling()
