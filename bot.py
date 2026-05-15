@@ -59,15 +59,18 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text="Let me check your schedule, Boss! Just give me a sec..."
-    )
-    result = get_next_class()
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=result
-    )
+    query = update.callback_query
+    if query:
+        await query.answer()
+        status_msg = await query.edit_message_text("Checking your schedule, Boss! Just give me a sec...")
+    else:
+        status_msg = await update.message.reply_text("Checking your schedule, Boss! Just give me a sec...")
+
+    try:
+        schedule_info = get_next_class()
+        await status_msg.edit_text(schedule_info)
+    except Exception as e:
+        await status_msg.edit_text(f"⚠️ Failed to fetch schedule because of {e}") 
 
 async def emails(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -268,6 +271,7 @@ if __name__ == '__main__':
 
     schedule_handler = CommandHandler('schedule', schedule)
     app.add_handler(schedule_handler)
+    app.add_handler(CallbackQueryHandler(schedule, pattern='^btn_schedule$'))
 
     emails_handler = CommandHandler('emails', emails)
     app.add_handler(emails_handler)
