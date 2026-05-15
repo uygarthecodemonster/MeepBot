@@ -40,7 +40,7 @@ def get_next_class():
     elif day_diff == 1:
         day_str = "tomorrow"
     else:
-        day_str = f"on {start_datetime.strftime('%A')}"
+        day_str = f"{start_datetime.strftime('%A')}"
 
     raw_location = next_class.location
     raw_description = next_class.description 
