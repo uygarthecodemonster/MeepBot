@@ -20,7 +20,10 @@ from google.auth.transport.requests import Request
 #SQLite imports
 import sqlite3
 
-ASKING_USERS, ASKING_MESSAGE = range(2)
+#Youtube API imports
+from youtube_api import get_random_youtube_video
+
+ASKING_USERS, ASKING_MESSAGE, ASKING_MOOD = range(3)
 
 def setup_database():
     conn = sqlite3.connect('meepbot.db')
@@ -146,6 +149,28 @@ async def ask_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("What do you want to say to them? 🤔")
     return ASKING_MESSAGE
 
+async def ask_mood(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    question_text = "What kind of rabbit hole are we going down today, Boss?\n\nType a topic (like 'Gordon Ramsay' or 'Coding Tutorials'), or just type 'random' for whatever is trending."
+
+    query = update.callback_query
+    if query:
+        await query.answer()
+        await query.edit_message_text(question_text)
+    else:
+        await update.message.reply_text(question_text)
+    
+    return ASKING_MOOD
+
+async def find_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_mood = update.message.text
+
+    status_msg = await update.message.reply_text("Hold on tight, Boss! I'm choosing a video for you... 🎬")
+    video_info = get_random_youtube_video(user_mood)
+
+    await status_msg.edit_text(video_info, parse_mode='Markdown')
+
+    return ConversationHandler.END
+
 async def send_engine(targets: list, message_text: str, is_all: bool, update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     users_to_send = []
@@ -232,7 +257,8 @@ async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         InlineKeyboardButton("📚 Check Schedule", callback_data="btn_schedule"),
         InlineKeyboardButton("📩 Check Emails", callback_data="btn_emails"),
-        InlineKeyboardButton("📢 Broadcast", callback_data="btn_send")
+        InlineKeyboardButton("📢 Broadcast", callback_data="btn_send"),
+        InlineKeyboardButton("🎬 Suggest a Video", callback_data="btn_sugvids")
     ],[
         InlineKeyboardButton("🚫 Cancel", callback_data="btn_cancel")
     ]
@@ -251,6 +277,8 @@ async def handle_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.edit_message_text("Checking your emails, Boss! Just give me a sec...")
     if clicked_button == "btn_send":
         await query.edit_message_text("To send a message to everyone, use: /send @all Your message here\n\nTo send a message to specific users, use: /send @username1 @username2 Your message here")
+    if clicked_button == "btn_sugvids":
+        await query.edit_message_text("To suggest a video, use: /video")
     if clicked_button == "btn_cancel":
         await query.edit_message_text("Menu cancelled. I'm just a bot, I don't have feelings, but if I did, I would shot you in the head. 😵🔫")
 
@@ -282,7 +310,6 @@ if __name__ == '__main__':
 
     menu_handler = CommandHandler('menu', show_menu)
     app.add_handler(menu_handler)
-  
 
     broadcast_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(start_sending, pattern='^btn_send$')],
@@ -293,6 +320,22 @@ if __name__ == '__main__':
         fallbacks=[CommandHandler('cancel', cancel_conversation)]
     )
     app.add_handler(broadcast_handler)
+
+    video_handler = ConversationHandler(
+        entry_points=[
+            CommandHandler('video', ask_mood),
+            CallbackQueryHandler(ask_mood, pattern='^btn_sugvids$')
+        ],
+        states={
+            ASKING_MOOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, find_video)]
+        },
+        fallbacks=[CommandHandler('cancel', cancel_conversation)]
+    )
+    app.add_handler(video_handler)
+
+    video_handler = CommandHandler('video', find_video)
+    app.add_handler(video_handler)
+    app.add_handler(CallbackQueryHandler(find_video, pattern='^btn_sugvids$'))
 
     app.add_handler(CallbackQueryHandler(handle_button_click))
 
