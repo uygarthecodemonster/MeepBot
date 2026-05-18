@@ -23,7 +23,11 @@ import sqlite3
 #Youtube API imports
 from youtube_api import get_random_youtube_video
 
+#Blackjack imports
+from blackjack import shuffle_deck, calculate_score
+
 ASKING_USERS, ASKING_MESSAGE, ASKING_MOOD = range(3)
+PLAYING_BLACKJACK = 99
 
 def setup_database():
     conn = sqlite3.connect('meepbot.db')
@@ -253,6 +257,91 @@ async def execute_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     return ConversationHandler.END
 
+async def start_blackjack(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    deck = shuffle_deck()
+    player_hand = [deck.pop(), deck.pop()]
+    dealer_hand = [deck.pop(), deck.pop()]
+
+    context.user_data['deck']=deck
+    context.user_data['player_hand']=player_hand
+    context.user_data['dealer_hand']=dealer_hand
+
+    player_score = calculate_score(player_hand)
+
+    text = (f"🎰 **Welcome to the MeepBot Casino!**\n\n"
+            f"👤 **Your Hand:** {', '.join(player_hand)} (Score: {player_score})\n"
+            f"🤖 **Dealer shows:** {dealer_hand[0]} and [?]")
+    
+    keyboard = [
+        [InlineKeyboardButton("🃏 Hit", callback_data='bj_hit'), 
+         InlineKeyboardButton("🛑 Stand", callback_data='bj_stand')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    if update.callback_query:
+        await update.answer()
+        await update.callback_query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+    else:
+        await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+
+    return PLAYING_BLACKJACK
+
+async def bj_round(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    choice = query.data
+
+    deck = context.user_data['deck']
+    player_hand = context.user_data['player_hand']
+    dealer_hand = context.user_data['dealer_hand']
+
+    if choice == 'bj_hit':
+        player_hand.append(deck.pop())
+        player_score = calculate_score(player_hand)
+
+        if player_score > 21:
+            text = (f"💥 **BUST! You went over 21!**\n\n"
+                    f"👤 **Your Hand:** {', '.join(player_hand)} (Score: {player_score})\n"
+                    f"🤖 **Dealer Hand:** {', '.join(dealer_hand)} (Score: {calculate_score(dealer_hand)})")
+            restart_keyboard = [[InlineKeyboardButton("🔄 Play Again", callback_data='bj_restart')]]
+            await query.edit_message_text(text, reply_markup=restart_keyboard, parse_mode='Markdown')
+            return ConversationHandler.END
+        
+        text = (f"🎰 **MeepBot Casino**\n\n"
+                f"👤 **Your Hand:** {', '.join(player_hand)} (Score: {player_score})\n"
+                f"🤖 **Dealer shows:** {dealer_hand[0]} and [?]")
+        keyboard = [[InlineKeyboardButton("🃏 Hit", callback_data='bj_hit'),
+                    InlineKeyboardButton("🛑 Stand", callback_data='bj_stand')]]
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+        return PLAYING_BLACKJACK 
+    
+    elif choice == 'bj_stand':
+        dealer_score = calculate_score(dealer_hand)
+        player_score = calculate_score(player_hand)
+
+        while dealer_score < 17:
+            dealer_hand.append(deck.pop())
+            dealer_score = calculate_score(dealer_hand)
+
+        if dealer_score > 21:
+            result = "🎉 **DEALER BUSTS! YOU WIN!**"
+        elif player_score > dealer_score:
+            result = "🎉 **YOU WIN!**"
+        elif player_score < dealer_score:
+            result = "💸 **DEALER WINS!**"
+        else:
+            result = "🤝 **PUSH (Tie)!**"
+
+        text = (f"{result}\n\n"
+                f"👤 **Your Hand:** {', '.join(player_hand)} (Score: {player_score})\n"
+                f"🤖 **Dealer Hand:** {', '.join(dealer_hand)} (Score: {dealer_score})")
+    
+        restart_keyboard = [[InlineKeyboardButton("🔄 Play Again", callback_data='bj_restart')]]
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(restart_keyboard), parse_mode='Markdown')
+        return ConversationHandler.END
+
 async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         InlineKeyboardButton("📚 Check Schedule", callback_data="btn_schedule"),
@@ -332,6 +421,17 @@ if __name__ == '__main__':
         fallbacks=[CommandHandler('cancel', cancel_conversation)]
     )
     app.add_handler(video_handler)
+
+    blackjack_handler = ConversationHandler(
+        entry_points=[CommandHandler('blackjack', start_blackjack), 
+                        CallbackQueryHandler(start_blackjack, pattern='^bj_restart$')],
+        states={
+            PLAYING_BLACKJACK: [CallbackQueryHandler(bj_round, pattern='^bj_')]
+        },
+        fallbacks=[CommandHandler('cancel', cancel_conversation)]
+    )
+    app.add_handler(blackjack_handler)
+
 
     video_handler = CommandHandler('video', find_video)
     app.add_handler(video_handler)
