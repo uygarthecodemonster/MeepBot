@@ -1,14 +1,19 @@
 import requests
 from ics import Calendar
-from datetime import datetime
-import zoneinfo
 import arrow
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def get_next_class():
-    url = "https://cloud.timeedit.net/nl_tue/web/stud01/ri6Y47nkyZ6ZQ1Q46d5QZ3k25121Q48Q682Z0nZQ11793w2uj46t720Z5A72D000n124l1BCAtn2l9CEA30E95212o6Q18731.ics"
+    url = os.getenv("SCHEDULE_LINK")  # Replace with your actual .ics URL or path to the .ics file
 
-    print("Fetching calendar data...")
+    if not url:
+        return "⚠️ SCHEDULE_LINK is not set in your .env file, Boss!"
+    
     response = requests.get(url)
+    response.raise_for_status()
 
     cal = Calendar(response.text)
 

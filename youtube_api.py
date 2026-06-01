@@ -1,6 +1,9 @@
 import os
 import random
 import requests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def get_random_youtube_video(user_mood: str):
     api_key = os.getenv('YOUTUBE_API_KEY')

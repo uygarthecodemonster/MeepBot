@@ -28,6 +28,7 @@ from blackjack import shuffle_deck, calculate_score
 
 ASKING_USERS, ASKING_MESSAGE, ASKING_MOOD = range(3)
 PLAYING_BLACKJACK = 99
+SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 
 def setup_database():
     conn = sqlite3.connect('meepbot.db')
@@ -41,8 +42,8 @@ def setup_database():
     conn.commit()
     conn.close()
 
-setup_database()
 load_dotenv()
+setup_database()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -52,7 +53,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if username:
         conn = sqlite3.connect('meepbot.db')
         cursor = conn.cursor()
-        cursor.execute('INSERT OR IGNORE INTO users (username, chat_id) VALUES (?, ?)', (f"@{username}", chat_id))
+        cursor.execute('INSERT OR REPLACE INTO users (username, chat_id) VALUES (?, ?)', (f"@{username}", chat_id))
 
         conn.commit()
         conn.close()
@@ -88,7 +89,6 @@ async def emails(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         status_msg = await update.message.reply_text("Checking your emails, Boss! Just give me a sec...")
 
-    SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
     creds = None
 
     if os.path.exists('token.json'):
@@ -204,14 +204,19 @@ async def send_engine(targets: list, message_text: str, is_all: bool, update: Up
 
     await update.message.reply_text(f"🚀 Sending message to {len(users_to_send)} user(s)...")
 
+    sender_name = update.effective_user.username or update.effective_user.first_name
+
     for username, chat_id in users_to_send:
         try:
-            await context.bot.send_message(chat_id=chat_id, text=f"📢 **Message from {username}:**\n{message_text}", parse_mode='Markdown')
+            await context.bot.send_message(chat_id=chat_id, text=f"📢 **Message from {sender_name}:**\n{message_text}", parse_mode='Markdown')
             usernames_success.append(username)
         except Exception as e:
             print(f"I failed to send message to {username} because of {e}")
         
-    await update.message.reply_text(f"✅ Your voice is heard by {', '.join(usernames_success)}.")
+    if usernames_success:
+        await update.message.reply_text(f"✅ Your voice is heard by {', '.join(usernames_success)}.")
+    else:
+        await update.message.reply_text("⚠️ I couldn't send your message to any of the specified users. Maybe they blocked me? Who cares!")
 
 async def send(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 2:
@@ -239,7 +244,7 @@ async def send(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ You forgot to include the message, dummass!")
         return
 
-    await send_engine(targets, message_text, is_all, update, context)
+    await send_engine(targets, message_words, is_broadcast_all, update, context)
 
 async def execute_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message_text = update.message.text
@@ -263,27 +268,47 @@ async def start_blackjack(update: Update, context: ContextTypes.DEFAULT_TYPE):
     player_hand = [deck.pop(), deck.pop()]
     dealer_hand = [deck.pop(), deck.pop()]
 
-    context.user_data['deck']=deck
-    context.user_data['player_hand']=player_hand
-    context.user_data['dealer_hand']=dealer_hand
+    context.user_data['deck'] = deck
+    context.user_data['player_hand'] = player_hand
+    context.user_data['dealer_hand'] = dealer_hand
 
     player_score = calculate_score(player_hand)
+    dealer_score = calculate_score(dealer_hand)
+    restart_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Play Again", callback_data='bj_restart')]])
+
+    query = update.callback_query
+
+    # Natural blackjack: player has 21 on opening hand
+    if player_score == 21:
+        dealer_ten_cards = ['10', 'J', 'Q', 'K', 'A']
+        if dealer_hand[0] in dealer_ten_cards and dealer_score == 21:
+            result = "🤝 **PUSH! Both got Blackjack!**"
+        else:
+            result = "🃏 **BLACKJACK! You win instantly!**"
+        text = (f"{result}\n\n"
+                f"👤 **Your Hand:** {', '.join(player_hand)} (Score: {player_score})\n"
+                f"🤖 **Dealer Hand:** {', '.join(dealer_hand)} (Score: {dealer_score})")
+        if query:
+            await query.answer()
+            await query.edit_message_text(text, reply_markup=restart_keyboard, parse_mode='Markdown')
+        else:
+            await update.message.reply_text(text, reply_markup=restart_keyboard, parse_mode='Markdown')
+        return ConversationHandler.END
 
     text = (f"🎰 **Welcome to the MeepBot Casino!**\n\n"
             f"👤 **Your Hand:** {', '.join(player_hand)} (Score: {player_score})\n"
             f"🤖 **Dealer shows:** {dealer_hand[0]} and [?]")
-    
-    keyboard = [
-        [InlineKeyboardButton("🃏 Hit", callback_data='bj_hit'), 
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🃏 Hit", callback_data='bj_hit'),
          InlineKeyboardButton("🛑 Stand", callback_data='bj_stand')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    if update.callback_query:
-        await update.answer()
-        await update.callback_query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+    ])
+
+    if query:
+        await query.answer()
+        await query.edit_message_text(text, reply_markup=keyboard, parse_mode='Markdown')
     else:
-        await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+        await update.message.reply_text(text, reply_markup=keyboard, parse_mode='Markdown')
 
     return PLAYING_BLACKJACK
 
@@ -296,6 +321,8 @@ async def bj_round(update: Update, context: ContextTypes.DEFAULT_TYPE):
     player_hand = context.user_data['player_hand']
     dealer_hand = context.user_data['dealer_hand']
 
+    restart_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Play Again", callback_data='bj_restart')]])
+
     if choice == 'bj_hit':
         player_hand.append(deck.pop())
         player_score = calculate_score(player_hand)
@@ -304,28 +331,29 @@ async def bj_round(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text = (f"💥 **BUST! You went over 21!**\n\n"
                     f"👤 **Your Hand:** {', '.join(player_hand)} (Score: {player_score})\n"
                     f"🤖 **Dealer Hand:** {', '.join(dealer_hand)} (Score: {calculate_score(dealer_hand)})")
-            restart_keyboard = [[InlineKeyboardButton("🔄 Play Again", callback_data='bj_restart')]]
             await query.edit_message_text(text, reply_markup=restart_keyboard, parse_mode='Markdown')
             return ConversationHandler.END
-        
+
         text = (f"🎰 **MeepBot Casino**\n\n"
                 f"👤 **Your Hand:** {', '.join(player_hand)} (Score: {player_score})\n"
                 f"🤖 **Dealer shows:** {dealer_hand[0]} and [?]")
-        keyboard = [[InlineKeyboardButton("🃏 Hit", callback_data='bj_hit'),
-                    InlineKeyboardButton("🛑 Stand", callback_data='bj_stand')]]
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🃏 Hit", callback_data='bj_hit'),
+                    InlineKeyboardButton("🛑 Stand", callback_data='bj_stand')]])
+        await query.edit_message_text(text, reply_markup=keyboard, parse_mode='Markdown')
+        return PLAYING_BLACKJACK
 
-        return PLAYING_BLACKJACK 
-    
     elif choice == 'bj_stand':
-        dealer_score = calculate_score(dealer_hand)
         player_score = calculate_score(player_hand)
+        dealer_score = calculate_score(dealer_hand)
 
         while dealer_score < 17:
             dealer_hand.append(deck.pop())
             dealer_score = calculate_score(dealer_hand)
 
-        if dealer_score > 21:
+        # Player bust always loses — check before comparing scores
+        if player_score > 21:
+            result = "💸 **YOU BUSTED! DEALER WINS!**"
+        elif dealer_score > 21:
             result = "🎉 **DEALER BUSTS! YOU WIN!**"
         elif player_score > dealer_score:
             result = "🎉 **YOU WIN!**"
@@ -337,20 +365,19 @@ async def bj_round(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = (f"{result}\n\n"
                 f"👤 **Your Hand:** {', '.join(player_hand)} (Score: {player_score})\n"
                 f"🤖 **Dealer Hand:** {', '.join(dealer_hand)} (Score: {dealer_score})")
-    
-        restart_keyboard = [[InlineKeyboardButton("🔄 Play Again", callback_data='bj_restart')]]
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(restart_keyboard), parse_mode='Markdown')
+
+        await query.edit_message_text(text, reply_markup=restart_keyboard, parse_mode='Markdown')
         return ConversationHandler.END
 
 async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
+    keyboard = [[
         InlineKeyboardButton("📚 Check Schedule", callback_data="btn_schedule"),
         InlineKeyboardButton("📩 Check Emails", callback_data="btn_emails"),
         InlineKeyboardButton("📢 Broadcast", callback_data="btn_send"),
         InlineKeyboardButton("🎬 Suggest a Video", callback_data="btn_sugvids")
     ],[
         InlineKeyboardButton("🚫 Cancel", callback_data="btn_cancel")
-    ]
+    ]]
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text('🥶 I am the Iceman. I am a pretty nice man. 🧊', reply_markup=reply_markup)
@@ -360,14 +387,6 @@ async def handle_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.answer()
     clicked_button = query.data
 
-    if clicked_button == "btn_schedule":
-        await query.edit_message_text("Checking your schedule, Boss! Just give me a sec...")
-    if clicked_button == "btn_emails":
-        await query.edit_message_text("Checking your emails, Boss! Just give me a sec...")
-    if clicked_button == "btn_send":
-        await query.edit_message_text("To send a message to everyone, use: /send @all Your message here\n\nTo send a message to specific users, use: /send @username1 @username2 Your message here")
-    if clicked_button == "btn_sugvids":
-        await query.edit_message_text("To suggest a video, use: /video")
     if clicked_button == "btn_cancel":
         await query.edit_message_text("Menu cancelled. I'm just a bot, I don't have feelings, but if I did, I would shot you in the head. 😵🔫")
 
@@ -431,11 +450,6 @@ if __name__ == '__main__':
         fallbacks=[CommandHandler('cancel', cancel_conversation)]
     )
     app.add_handler(blackjack_handler)
-
-
-    video_handler = CommandHandler('video', find_video)
-    app.add_handler(video_handler)
-    app.add_handler(CallbackQueryHandler(find_video, pattern='^btn_sugvids$'))
 
     app.add_handler(CallbackQueryHandler(handle_button_click))
 
