@@ -26,6 +26,9 @@ from youtube_api import get_random_youtube_video
 #Blackjack imports
 from blackjack import shuffle_deck, calculate_score
 
+#Economy imports
+from economy import setup_economy_database
+
 ASKING_USERS, ASKING_MESSAGE, ASKING_MOOD = range(3)
 PLAYING_BLACKJACK = 99
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
