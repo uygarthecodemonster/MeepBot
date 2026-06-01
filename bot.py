@@ -38,8 +38,9 @@ def setup_database():
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
-            username TEXT PRIMARY KEY,
-            chat_id INTEGER
+            chat_id INTEGER PRIMARY KEY,
+            username TEXT,
+            first_name TEXT
         )
     ''')
     conn.commit()
@@ -47,19 +48,17 @@ def setup_database():
 
 load_dotenv()
 setup_database()
+setup_economy_database()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat_id = update.effective_chat.id
-    username = user.username
+    username = f"@{user.username}" if user.username else None
 
-    if username:
-        conn = sqlite3.connect('meepbot.db')
+    with sqlite3.connect('meepbot.db') as conn:
         cursor = conn.cursor()
-        cursor.execute('INSERT OR REPLACE INTO users (username, chat_id) VALUES (?, ?)', (f"@{username}", chat_id))
-
+        cursor.execute('INSERT OR REPLACE INTO users (chat_id, username, first_name) VALUES (?, ?, ?)', (chat_id, username, user.first_name))
         conn.commit()
-        conn.close()
 
     await update.message.reply_text(f"Yo, I am Meep Bot, {user.first_name}! I will never forget you, and I will always be here to serve you!")
 
@@ -185,11 +184,11 @@ async def send_engine(targets: list, message_text: str, is_all: bool, update: Up
     with sqlite3.connect('meepbot.db') as conn:
         cursor = conn.cursor()
         if is_all:
-            cursor.execute("SELECT username, chat_id FROM users")
+            cursor.execute("SELECT username, chat_id, first_name FROM users")
             users_to_send = cursor.fetchall()
         else:
             placeholder = ','.join('?' * len(targets)) 
-            query = f"SELECT username, chat_id FROM users WHERE username IN ({placeholder})"
+            query = f"SELECT username, chat_id, first_name FROM users WHERE username IN ({placeholder})"
             cursor.execute(query, targets)
             results = cursor.fetchall()
 
@@ -209,12 +208,12 @@ async def send_engine(targets: list, message_text: str, is_all: bool, update: Up
 
     sender_name = update.effective_user.username or update.effective_user.first_name
 
-    for username, chat_id in users_to_send:
+    for username, chat_id, first_name in users_to_send:
         try:
             await context.bot.send_message(chat_id=chat_id, text=f"📢 **Message from {sender_name}:**\n{message_text}", parse_mode='Markdown')
-            usernames_success.append(username)
+            usernames_success.append(username or first_name)
         except Exception as e:
-            print(f"I failed to send message to {username} because of {e}")
+            print(f"I failed to send message to {username or first_name} because of {e}")
         
     if usernames_success:
         await update.message.reply_text(f"✅ Your voice is heard by {', '.join(usernames_success)}.")

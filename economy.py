@@ -49,12 +49,12 @@ def setup_economy_database():
     conn.close()
 
 async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    username = update.effective_user.username
+    chat_id = update.effective_user.id
     with sqlite3.connect('meepbot.db') as conn:
         c = conn.cursor()
         c.execute('''
-            SELECT balance FROM users WHERE username = ?
-        ''', (f"@{username}",))
+            SELECT balance FROM users WHERE chat_id = ?
+        ''', (chat_id,))
         balance = c.fetchone()
         if balance is not None:
             await update.message.reply_text(f"💰 Your current balance is: €{balance[0]:.2f}, Boss!")
