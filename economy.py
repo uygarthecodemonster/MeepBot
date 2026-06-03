@@ -31,7 +31,7 @@ JOBS = {
         ]
     },
     "Police Officer": {
-        "min_level": 8,
+        "min_level": 11,
         "workplace": "the police department",
         "promotions": [
             {"hours": 0, "title": "Cadet", "salary": 125},
@@ -42,7 +42,7 @@ JOBS = {
         ]
     },
     "Chef": {
-        "min_level": 9,
+        "min_level": 12,
         "workplace": "the restaurant kitchen",
         "promotions": [
             {"hours": 0, "title": "Kitchen Assistant", "salary": 175},
@@ -53,7 +53,7 @@ JOBS = {
         ]
     },
     "Accountant": {
-        "min_level": 18,
+        "min_level": 22,
         "workplace": "the accounting firm",
         "promotions": [
             {"hours": 0, "title": "Junior Accountant", "salary": 400},
@@ -64,7 +64,7 @@ JOBS = {
         ]
     },
     "Pilot": {
-        "min_level": 20,
+        "min_level": 23,
         "workplace": "the cockpit",
         "promotions": [
             {"hours": 0, "title": "Student Pilot", "salary": 500},
@@ -74,50 +74,72 @@ JOBS = {
             {"hours": 1500, "title": "Chief Pilot", "salary": 6500},
         ]
     },
+    "Hacker": {
+        "min_level": 32,
+        "workplace": "the dark web",
+        "promotions": [
+            {"hours": 0, "title": "Script Kiddie", "salary": 800},
+            {"hours": 100, "title": "Grey Hat", "salary": 2000},
+            {"hours": 300, "title": "Black Hat", "salary": 4000},
+            {"hours": 700, "title": "Cybercriminal", "salary": 7000},
+            {"hours": 1500, "title": "Dark Web Legend", "salary": 10500},
+        ]
+    },
+    "Doctor": {
+        "min_level": 34,
+        "workplace": "the hospital",
+        "promotions": [
+            {"hours": 0, "title": "Medical Intern", "salary": 1000},
+            {"hours": 100, "title": "Resident", "salary": 2500},
+            {"hours": 300, "title": "General Practitioner", "salary": 5000},
+            {"hours": 700, "title": "Specialist", "salary": 8500},
+            {"hours": 1500, "title": "Chief of Surgery", "salary": 12500},
+        ]
+    },
     "Film Director": {
-        "min_level": 35,
+        "min_level": 48,
         "workplace": "the film set",
         "promotions": [
-            {"hours": 0, "title": "Production Assistant", "salary": 800},
-            {"hours": 100, "title": "Assistant Director", "salary": 2000},
-            {"hours": 300, "title": "Independent Director", "salary": 4000},
-            {"hours": 700, "title": "Studio Director", "salary": 7000},
-            {"hours": 1500, "title": "Hollywood Director", "salary": 10500},
+            {"hours": 0, "title": "Production Assistant", "salary": 900},
+            {"hours": 100, "title": "Assistant Director", "salary": 2800},
+            {"hours": 300, "title": "Independent Director", "salary": 6000},
+            {"hours": 700, "title": "Studio Director", "salary": 10500},
+            {"hours": 1500, "title": "Hollywood Director", "salary": 15500},
         ]
     },
     "Investment Banker": {
-        "min_level": 37,
+        "min_level": 50,
         "workplace": "Wall Street",
         "promotions": [
-            {"hours": 0, "title": "Banking Intern", "salary": 1000},
-            {"hours": 100, "title": "Junior Analyst", "salary": 2500},
-            {"hours": 300, "title": "Senior Analyst", "salary": 5000},
-            {"hours": 700, "title": "Vice President", "salary": 8500},
-            {"hours": 1500, "title": "Managing Director", "salary": 12500},
+            {"hours": 0, "title": "Banking Intern", "salary": 1100},
+            {"hours": 100, "title": "Junior Analyst", "salary": 3200},
+            {"hours": 300, "title": "Senior Analyst", "salary": 7000},
+            {"hours": 700, "title": "Vice President", "salary": 11500},
+            {"hours": 1500, "title": "Managing Director", "salary": 16000},
         ]
     },
     "CEO": {
         "min_level": 65,
         "workplace": "the corporate headquarters",
         "promotions": [
-            {"hours": 0, "title": "Startup Founder", "salary": 1500},
-            {"hours": 100, "title": "Small Business Owner", "salary": 4000},
-            {"hours": 300, "title": "Regional CEO", "salary": 7500},
-            {"hours": 700, "title": "National CEO", "salary": 11000},
-            {"hours": 1500, "title": "Global CEO", "salary": 15000},
+            {"hours": 0, "title": "Startup Founder", "salary": 2000},
+            {"hours": 100, "title": "Small Business Owner", "salary": 5500},
+            {"hours": 300, "title": "Regional CEO", "salary": 10500},
+            {"hours": 700, "title": "National CEO", "salary": 16500},
+            {"hours": 1500, "title": "Global CEO", "salary": 22500},
         ]
     },
     "Crime Lord": {
         "min_level": 67,
         "workplace": "the underworld",
         "promotions": [
-            {"hours": 0, "title": "Street Thug", "salary": 1200},
-            {"hours": 100, "title": "Gang Member", "salary": 3500},
-            {"hours": 300, "title": "Crime Boss", "salary": 6500},
-            {"hours": 700, "title": "Cartel Leader", "salary": 10000},
-            {"hours": 1500, "title": "Crime Lord", "salary": 14000},
+            {"hours": 0, "title": "Street Thug", "salary": 1800},
+            {"hours": 100, "title": "Gang Member", "salary": 5000},
+            {"hours": 300, "title": "Crime Boss", "salary": 9500},
+            {"hours": 700, "title": "Cartel Leader", "salary": 15000},
+            {"hours": 1500, "title": "Crime Lord", "salary": 22000},
         ]
-    },
+    }
 }
 
 def setup_economy_database():
@@ -235,4 +257,26 @@ async def work(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(f"🎉 Congratulations, {update.effective_user.first_name}! You've been promoted to {next_promotion['title']} and your new salary is €{next_promotion['salary']}/hr!")
                 conn.commit()
             context.job_queue.run_once(work_ready_notification, 60, chat_id=chat_id)
+
+async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_user.id
+    with sqlite3.connect('meepbot.db') as conn:
+        c = conn.cursor()
+        c.execute('''
+            SELECT first_name, username, balance, level, total_xp,  current_title, salary, hours_worked FROM users WHERE chat_id = ?
+        ''', (chat_id,))
+        result = c.fetchone()
+        if result is None:
+            await update.message.reply_text("⚠️ I don't even know who the fuck you are dumbass! Use /start to sign yourself up!")
+        else:
+            first_name, username, balance, level, total_xp, current_title, salary, hours_worked = result
+            safe_name = (username or first_name).replace('_', '\\_')
+            await update.message.reply_text(
+                f"👤 *{safe_name}*\n"
+                f"💰 Balance: €{balance:.2f}\n"
+                f"⭐ Level: {level} ({total_xp} XP)\n"
+                f"💼 *{current_title}*\n"
+                f"💵 €{salary:.0f}/hr | ⏱ {hours_worked} hour(s)",
+                parse_mode='Markdown'
+)
 
