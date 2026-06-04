@@ -142,6 +142,21 @@ JOBS = {
     }
 }
 
+def check_level_up(total_xp, level):
+    current_level = level
+    levels_gained = 0
+    for i in range(current_level):
+        total_xp -= 5 * i**2 + 50 * i + 100
+    for n in range(current_level, 100):
+        xp_for_next_level = 5 * n**2 + 50 * n + 100
+        if total_xp >= xp_for_next_level:
+            levels_gained += 1
+            total_xp -= xp_for_next_level
+        else:
+            break
+    new_level = current_level + levels_gained
+    return new_level, levels_gained
+
 def setup_economy_database():
     conn = sqlite3.connect('meepbot.db')
     c = conn.cursor()
@@ -236,14 +251,35 @@ async def work(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"Wow! I like the enthusiasm. But you can't work that hard. You need to wait {seconds_remaining} seconds before work again.")
         else:
             c.execute('''
-                SELECT balance, hours_worked, salary, current_job, current_title FROM users WHERE chat_id = ?
+                SELECT balance, hours_worked, salary, current_job, current_title, level, total_xp FROM users WHERE chat_id = ?
             ''', (chat_id,))
-            balance, hours_worked, salary, current_job, current_title = c.fetchone()
+            balance, hours_worked, salary, current_job, current_title, level, total_xp = c.fetchone()
+            work_xp = 10 + (2 * JOBS[current_job]['min_level'])
             c.execute('''
-                UPDATE users SET balance = ?, hours_worked = ?, last_worked = ? WHERE chat_id = ?
-            ''', (balance + salary, hours_worked + 1, int(time.time()), chat_id))
+                UPDATE users SET balance = ?, hours_worked = ?, last_worked = ?, total_xp = ? WHERE chat_id = ?
+            ''', (balance + salary, hours_worked + 1, int(time.time()), total_xp + work_xp, chat_id))
             conn.commit()
             await update.message.reply_text(f"💼 You worked as a {current_title} at {JOBS[current_job]['workplace']} for an hour and earned €{salary:.2f}, Boss! Your total balance is now €{balance + salary:.2f}. Keep working to get promoted and earn more!")
+            new_level, levels_gained = check_level_up(total_xp + work_xp, level)
+            if levels_gained > 0:
+                c.execute('''
+                    UPDATE users SET level = ? WHERE chat_id = ?
+                ''', (new_level, chat_id))
+                conn.commit()
+                if levels_gained == 1:
+                    await update.message.reply_text(
+                        f"⭐ *LEVEL UP!*\n"
+                        f"You are now *Level {new_level}*, Boss!\n"
+                        f"Keep working and spending to climb higher! 💪",
+                        parse_mode='Markdown'
+                        )
+                elif levels_gained > 1:
+                    await update.message.reply_text(
+                        f"🚀 *{levels_gained} LEVELS AT ONCE?!*\n"
+                        f"You jumped straight to *Level {new_level}*, Boss!\n"
+                        f"Whatever you just did — do more of it. 🔥",
+                        parse_mode='Markdown'
+                    )
             promotions = JOBS[current_job]["promotions"]
             next_promotion = None
             for promotion in promotions:
