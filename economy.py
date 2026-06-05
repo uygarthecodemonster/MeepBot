@@ -312,12 +312,22 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("⚠️ I don't even know who the fuck you are dumbass! Use /start to sign yourself up!")
         else:
             first_name, username, balance, level, total_xp, current_title, salary, hours_worked = result
+            xp_in_level = total_xp
+            for i in range(level):
+                xp_in_level -= 5 * i**2 + 50 * i + 100
+            xp_for_next = 5 * level**2 + 50 * level + 100
+            filled = round((xp_in_level / xp_for_next) * 16)
+            bar = "█" * filled + "░" * (16 - filled)
+            if level == 100:
+                progress = " - MAX"
+            else:
+                progress = f"\n{bar}\n{xp_in_level}/{xp_for_next} XP to Level {level + 1}"
             safe_name = (username or first_name).replace('_', '\\_')
             job_section = "💼 *Unemployed*" if current_title is None else f"💼 *{current_title}*\n💵 €{salary:.0f}/hr | ⏱ {hours_worked} hour(s)"
             await update.message.reply_text(
                 f"👤 *{safe_name}*\n"
                 f"💰 Balance: €{balance:.2f}\n"
-                f"⭐ Level: {level} ({total_xp} XP)\n"
+                f"⭐ Level: {level}{progress}\n"
                 f"{job_section}",
                 parse_mode='Markdown'
             )
@@ -345,7 +355,7 @@ async def apply(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         lines.append(f"🔹{eligible}{i}. *{job_name}* (Level {job_data['min_level']}+)\n💵 Starting salary: €{job_data['promotions'][0]['salary']}/hr")
                     else:
                         lines.append(f"{eligible}{i}. {job_name} (Level {job_data['min_level']}+)\n💵 Starting salary: €{job_data['promotions'][0]['salary']}/hr")
-                text = "💼 *Available Jobs:*\n(✅ = eligible, ❌ = locked)\n\n" + "\n\n".join(lines) + "\n\n(⚠️ Switching jobs resets your hours worked to 0 and it's irreversible.)\n\nUse /apply \[number\] to apply for a job."
+                text = "💼 *Available Jobs:*\n(✅ = eligible, ❌ = locked)\n\n" + "\n\n".join(lines) + "\n\n(⚠️ Switching jobs resets your hours worked to 0 and it's irreversible.)\n\nUse /apply and type the job number. Example: /apply 1"
                 await update.message.reply_text(text, parse_mode='Markdown')
             else:
                 try:
