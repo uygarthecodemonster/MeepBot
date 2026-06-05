@@ -27,7 +27,7 @@ from youtube_api import get_random_youtube_video
 from blackjack import shuffle_deck, calculate_score
 
 #Economy imports
-from economy import setup_economy_database, balance, work, profile
+from economy import setup_economy_database, balance, work, profile, apply
 
 ASKING_USERS, ASKING_MESSAGE, ASKING_MOOD = range(3)
 PLAYING_BLACKJACK = 99
@@ -58,9 +58,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with sqlite3.connect('meepbot.db') as conn:
         cursor = conn.cursor()
         cursor.execute('''
-                       INSERT OR IGNORE INTO users (chat_id, username, first_name, salary) 
-                       VALUES (?, ?, ?, ?)
-                       ''', (chat_id, username, user.first_name, 50))
+                       INSERT OR IGNORE INTO users (chat_id, username, first_name) 
+                       VALUES (?, ?, ?)
+                       ''', (chat_id, username, user.first_name))
         cursor.execute('''
                        UPDATE users SET username = ?, first_name = ? WHERE chat_id = ?
                        ''', (username, user.first_name, chat_id))
@@ -469,6 +469,9 @@ if __name__ == '__main__':
 
     profile_handler = CommandHandler('profile', profile)
     app.add_handler(profile_handler)
+
+    apply_handler = CommandHandler('apply', apply)
+    app.add_handler(apply_handler)
 
     app.add_handler(CallbackQueryHandler(handle_button_click))
 

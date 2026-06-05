@@ -192,25 +192,28 @@ def setup_economy_database():
         pass
     try:
         c.execute('''
-                    ALTER TABLE users ADD COLUMN current_job TEXT DEFAULT "Street Cleaner"
+                ALTER TABLE users ADD COLUMN current_job TEXT DEFAULT NULL
                 ''')
     except sqlite3.OperationalError:
         pass
     try:
         c.execute('''
-                    ALTER TABLE users ADD COLUMN current_title TEXT DEFAULT "Junior Street Cleaner"
+                ALTER TABLE users ADD COLUMN current_title TEXT DEFAULT NULL
                 ''')
     except sqlite3.OperationalError:
         pass
     try:
         c.execute('''
-                    ALTER TABLE users ADD COLUMN last_worked INTEGER DEFAULT 0
+                ALTER TABLE users ADD COLUMN last_worked INTEGER DEFAULT 0
                 ''')
     except sqlite3.OperationalError:
         pass
-    c.execute('''
-                UPDATE users SET salary = 50 WHERE salary = 0
-            ''')
+    try:
+        c.execute('''
+                ALTER TABLE users ADD COLUMN highest_job_level INTEGER DEFAULT -1
+                ''')
+    except sqlite3.OperationalError:
+        pass
     conn.commit()
     conn.close()
 
@@ -254,6 +257,9 @@ async def work(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 SELECT balance, hours_worked, salary, current_job, current_title, level, total_xp FROM users WHERE chat_id = ?
             ''', (chat_id,))
             balance, hours_worked, salary, current_job, current_title, level, total_xp = c.fetchone()
+            if current_job is None or current_title is None:
+                await update.message.reply_text(f"🚫 You're unemployed, broke, and probably smell like it too 🤢. Nobody's paying you for anything right now, Boss.\nUse /apply to find a job and start earning before you starve! 💸")
+                return
             work_xp = 10 + (2 * JOBS[current_job]['min_level'])
             c.execute('''
                 UPDATE users SET balance = ?, hours_worked = ?, last_worked = ?, total_xp = ? WHERE chat_id = ?
@@ -307,12 +313,91 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             first_name, username, balance, level, total_xp, current_title, salary, hours_worked = result
             safe_name = (username or first_name).replace('_', '\\_')
+            job_section = "💼 *Unemployed*" if current_title is None else f"💼 *{current_title}*\n💵 €{salary:.0f}/hr | ⏱ {hours_worked} hour(s)"
             await update.message.reply_text(
                 f"👤 *{safe_name}*\n"
                 f"💰 Balance: €{balance:.2f}\n"
                 f"⭐ Level: {level} ({total_xp} XP)\n"
-                f"💼 *{current_title}*\n"
-                f"💵 €{salary:.0f}/hr | ⏱ {hours_worked} hour(s)",
+                f"{job_section}",
                 parse_mode='Markdown'
-)
+            )
 
+async def apply(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_user.id
+    with sqlite3.connect('meepbot.db') as conn:
+        c = conn.cursor()
+        c.execute('''
+                  SELECT current_job, level, highest_job_level, total_xp FROM users WHERE chat_id = ?
+                ''', (chat_id,))
+        result = c.fetchone()
+        if result is None:
+            await update.message.reply_text("⚠️ I don't even know who the fuck you are dumbass! Use /start to sign yourself up!")
+        else:
+            current_job, level, highest_job_level, total_xp = result
+            if not context.args:
+                lines = []
+                for i, (job_name, job_data) in enumerate(JOBS.items(), 1):
+                    if level >= job_data["min_level"]:
+                        eligible = '✅'
+                    else:
+                        eligible = '❌'
+                    if current_job == job_name:
+                        lines.append(f"🔹{eligible}{i}. *{job_name}* (Level {job_data['min_level']}+)\n💵 Starting salary: €{job_data['promotions'][0]['salary']}/hr")
+                    else:
+                        lines.append(f"{eligible}{i}. {job_name} (Level {job_data['min_level']}+)\n💵 Starting salary: €{job_data['promotions'][0]['salary']}/hr")
+                text = "💼 *Available Jobs:*\n(✅ = eligible, ❌ = locked)\n\n" + "\n\n".join(lines) + "\n\n(⚠️ Switching jobs resets your hours worked to 0 and it's irreversible.)\n\nUse /apply [number] to apply for a job."
+                await update.message.reply_text(text, parse_mode='Markdown')
+            else:
+                try:
+                    job_number = int(context.args[0])
+                    if job_number < 1 or job_number > len(JOBS):
+                        await update.message.reply_text("⚠️ That's not a number from the list, dumb fuck? Use /apply to see the damn list.")
+                        return
+                    job_list = list(JOBS.items())
+                    job_name, job_data = job_list[job_number - 1]
+                    if job_name == current_job:
+                        await update.message.reply_text("🙄 You already work there, dumbass. What, you forget where you work?")
+                    elif level < job_data["min_level"]:
+                        await update.message.reply_text(f"❌ Level {job_data['min_level']} required. You're Level {level}. Get your shit together and keep grinding.")
+                    else:
+                        starting_salary = job_data["promotions"][0]["salary"]
+                        starting_title = job_data["promotions"][0]["title"]
+                        xp_gain = 0
+                        if job_data["min_level"]>highest_job_level:
+                            xp_gain = 100 + (10 * job_data["min_level"])
+                        c.execute('''
+                                   UPDATE users SET salary = ?, current_job = ?, current_title = ?, hours_worked = ?, total_xp = ? WHERE chat_id = ?
+                                ''', (starting_salary, job_name, starting_title, 0, total_xp + xp_gain, chat_id))
+                        new_level, levels_gained = check_level_up(total_xp + xp_gain, level)
+                        conn.commit()
+                        if xp_gain > 0:
+                            c.execute('''
+                                   UPDATE users SET highest_job_level = ? WHERE chat_id = ?
+                                ''', (job_data["min_level"], chat_id))
+                            await update.message.reply_text(f"🎉 *Hired, Boss!*\nYou are now a *{starting_title}* at {job_data['workplace']}!\n💵 Starting salary: €{starting_salary:.0f}/hr\n⭐ +{xp_gain} XP for the career move!", parse_mode='Markdown')
+                        else:
+                            await update.message.reply_text(f"🎉 *Hired, Boss!*\nYou are now a *{starting_title}* at {job_data['workplace']}!\n💵 Starting salary: €{starting_salary:.0f}/hr", parse_mode='Markdown')
+                        if levels_gained > 0:
+                            c.execute('''
+                                UPDATE users SET level = ? WHERE chat_id = ?
+                            ''', (new_level, chat_id))
+                            conn.commit()
+                            if levels_gained == 1:
+                                await update.message.reply_text(
+                                    f"⭐ *LEVEL UP!*\n"
+                                    f"You are now *Level {new_level}*, Boss!\n"
+                                    f"Keep working and spending to climb higher! 💪",
+                                    parse_mode='Markdown'
+                                    )
+                            elif levels_gained > 1:
+                                await update.message.reply_text(
+                                    f"🚀 *{levels_gained} LEVELS AT ONCE?!*\n"
+                                    f"You jumped straight to *Level {new_level}*, Boss!\n"
+                                    f"Whatever you just did — do more of it. 🔥",
+                                    parse_mode='Markdown'
+                                )
+
+                except ValueError:
+                    await update.message.reply_text("⚠️ That's not even a number, you idiot. Use /apply to see the damn list.")
+                    return
+                
