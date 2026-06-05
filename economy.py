@@ -345,7 +345,7 @@ async def apply(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         lines.append(f"🔹{eligible}{i}. *{job_name}* (Level {job_data['min_level']}+)\n💵 Starting salary: €{job_data['promotions'][0]['salary']}/hr")
                     else:
                         lines.append(f"{eligible}{i}. {job_name} (Level {job_data['min_level']}+)\n💵 Starting salary: €{job_data['promotions'][0]['salary']}/hr")
-                text = "💼 *Available Jobs:*\n(✅ = eligible, ❌ = locked)\n\n" + "\n\n".join(lines) + "\n\n(⚠️ Switching jobs resets your hours worked to 0 and it's irreversible.)\n\nUse /apply [number] to apply for a job."
+                text = "💼 *Available Jobs:*\n(✅ = eligible, ❌ = locked)\n\n" + "\n\n".join(lines) + "\n\n(⚠️ Switching jobs resets your hours worked to 0 and it's irreversible.)\n\nUse /apply \[number\] to apply for a job."
                 await update.message.reply_text(text, parse_mode='Markdown')
             else:
                 try:
@@ -396,8 +396,37 @@ async def apply(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                     f"Whatever you just did — do more of it. 🔥",
                                     parse_mode='Markdown'
                                 )
-
                 except ValueError:
                     await update.message.reply_text("⚠️ That's not even a number, you idiot. Use /apply to see the damn list.")
                     return
-                
+
+async def promote(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_user.id
+    with sqlite3.connect('meepbot.db') as conn:
+        c = conn.cursor()
+        c.execute('''
+                  SELECT current_job, current_title, hours_worked FROM users WHERE chat_id = ?
+                ''', (chat_id,))
+        result = c.fetchone()
+        if result is None:
+            await update.message.reply_text("⚠️ I don't even know who the fuck you are dumbass! Use /start to sign yourself up!")
+        else:
+            current_job, current_title, hours_worked = result
+            if current_job is None or current_title is None:
+                await update.message.reply_text(f"🚫 You don't even have a job to get promoted from, you bum. Use /apply first and then come back when you've actually done something with your life. 💸")
+                return
+            lines = []
+            next_found = False
+            job_data = JOBS[current_job]
+            for promotion in job_data['promotions']:
+                if hours_worked >= promotion['hours']:
+                    lines.append(f"✅ {promotion['title']} \n   💵 €{promotion['salary']}/hr")
+                elif not next_found:
+                    lines.append(f"👉 {promotion['title']} \n   💵 €{promotion['salary']}/hr · ⏳ {promotion['hours'] - hours_worked} hrs to go")
+                    next_found = True
+                else:
+                    lines.append(f"⬜ {promotion['title']} \n   💵 €{promotion['salary']}/hr")
+            if not next_found:
+                lines.append("🏆 Max rank reached - All titles claimed 🏆\n\nThere's nothing left to prove here — time to move on and conquer something bigger. Use /apply to switch careers.")
+            text = f"📈 Career Progress — {current_job}\n\n" + "\n".join(lines)
+            await update.message.reply_text(text, parse_mode='Markdown')
