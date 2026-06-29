@@ -27,7 +27,7 @@ from youtube_api import get_random_youtube_video
 from blackjack import shuffle_deck, calculate_score
 
 #Economy imports
-from economy import setup_economy_database, balance, work, profile, apply, promote
+from economy import setup_economy_database, balance, work, profile, apply, promote, leaderboard
 
 ASKING_USERS, ASKING_MESSAGE, ASKING_MOOD = range(3)
 PLAYING_BLACKJACK = 99
@@ -475,6 +475,9 @@ if __name__ == '__main__':
 
     promote_handler = CommandHandler('promote', promote)
     app.add_handler(promote_handler)
+
+    leaderboard_handler = CommandHandler('leaderboard', leaderboard)
+    app.add_handler(leaderboard_handler)
 
     app.add_handler(CallbackQueryHandler(handle_button_click))
 

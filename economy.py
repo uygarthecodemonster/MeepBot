@@ -440,3 +440,35 @@ async def promote(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 lines.append("🏆 Max rank reached - All titles claimed 🏆\n\nThere's nothing left to prove here — time to move on and conquer something bigger. Use /apply to switch careers.")
             text = f"📈 Career Progress — {current_job}\n\n" + "\n".join(lines)
             await update.message.reply_text(text, parse_mode='Markdown')
+
+async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_user.id
+    with sqlite3.connect('meepbot.db') as conn:
+        c = conn.cursor()
+        c.execute('''
+                  SELECT chat_id, username, first_name, level, total_xp FROM users ORDER BY level DESC, total_xp DESC LIMIT 10
+                ''')
+        result = c.fetchall()
+        
+        lines = []
+        for i, (row_chat_id, username, first_name, level, total_xp) in enumerate(result, 1):
+            xp_needed = total_xp
+            for n in range(level):
+                xp_needed -= 5 * n**2 + 50 * n + 100
+            if i == 1:
+                emoji = "🥇"
+            elif i == 2:
+                emoji = "🥈"
+            elif i == 3:
+                emoji = "🥉"
+            else:
+                emoji = str(i)
+            line = f"{emoji}. 👤{username or first_name} - ⭐Level:{level} ({xp_needed} XP)"
+            if row_chat_id == chat_id:
+                line = f"*{line}*"
+            lines.append(line)
+        if len(result) < 10:
+            for i in range((len(result)) + 1, 11):
+                lines.append(f"{i}. 🪑 Nobody's claimed this spot yet")
+        text = f"🏆 Leaderboard — Top 10 Players\n\n" + "\n".join(lines)
+        await update.message.reply_text(text, parse_mode='Markdown')
