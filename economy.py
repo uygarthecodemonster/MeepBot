@@ -1,5 +1,6 @@
 import sqlite3
 import os
+
 from telegram import Update
 from telegram.ext import ContextTypes
 from dotenv import load_dotenv
@@ -581,7 +582,7 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(result) < 10:
             for i in range((len(result)) + 1, 11):
                 lines.append(f"{i}. 🪑 Nobody's claimed this spot yet")
-        text = f"🏆 Leaderboard — Top 10 Players\n\n" + "\n".join(lines)
+        text = f"🏆 Leaderboard — Top 10 Players 🏆\n\n" + "\n\n".join(lines)
         await update.message.reply_text(text, parse_mode='Markdown')
 
 async def shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -602,7 +603,7 @@ async def shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     category_emoji = CATEGORY_EMOJIS.get(category, "📦")
                     line = f"{i}. {category_emoji} {category}:"
                     lines.append(line)
-                text = "🛍️ *Shop*\n\n" + "\n".join(lines) + "\n\nUse /shop \[category number\] to browse items.\nExample: /shop 1 for Vehicles"
+                text = "🛍️ *Shop* 🛍️\n\n" + "\n\n".join(lines) + "\n\nUse /shop \[category number\] to browse items.\nExample: /shop 1 for Vehicles"
                 await update.message.reply_text(text, parse_mode='Markdown')
             else:
                 try:
@@ -614,13 +615,58 @@ async def shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         lines = []
                         for item in items:
                             if level >= item['min_level']:
-                                line = f"{item['emoji']} {item['name']} ✅\n 💰 €{item['price']}"
+                                line = f"{item['emoji']} {item['name']} ✅\n💰 €{item['price']}"
                             else:
-                                line = f"{item['emoji']} {item['name']} ❌\n 💰 €{item['price']} · 🔒 Level {item['min_level']}+"
+                                line = f"{item['emoji']} {item['name']} ❌\n💰 €{item['price']} · 🔒 Level {item['min_level']}+"
                             lines.append(line)
-                        text = f"{category_emoji} *{category}*\n(✅ = eligible, ❌ = locked)\n\n" + "\n".join(lines) + "\n\nUse /buy followed by the item name to purchase. Example: /buy Bicycle"
+                        text = f"{category_emoji} *{category}*\n(✅ = eligible, ❌ = locked)\n\n" + "\n\n".join(lines) + "\n\nUse /buy followed by the item name to purchase. Example: /buy Bicycle"
                         await update.message.reply_text(text, parse_mode='Markdown')
                     else:
                         await update.message.reply_text("⚠️ That's not a number from the list, dumb fuck? Use /shop again to see the damn list.")
                 except ValueError:
                     await update.message.reply_text("⚠️ Do you even know what a number is, you idiot? Use /shop again to see the damn list.")
+
+async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_user.id
+    if not context.args:
+        await update.message.reply_text("⚠️ You need to specify the item you want to buy smartass. Example: /buy Bicycle")
+        return
+    with sqlite3.connect('meepbot.db') as conn:
+        c = conn.cursor()
+        c.execute('''
+                  SELECT balance, level FROM users WHERE chat_id = ?
+                ''', (chat_id,))
+        result = c.fetchone()
+        if result is None:
+            await update.message.reply_text("⚠️ I don't even know who the fuck you are dumbass! Use /start to sign yourself up!")
+        else:
+            balance, level = result
+            item_name = " ".join(context.args)
+            for category in ITEMS:
+                item = next((i for i in ITEMS[category] if i['name'].lower() == item_name.lower()), None)
+                if item:
+                    break
+            if not item:
+                await update.message.reply_text("⚠️ I guess you did a typo or you are seeing things we don't! Use /shop to see the all available items.")
+                return
+            if level < item['min_level']:
+                await update.message.reply_text(f"⚠️ You're not level {item['min_level']}+ yet, you are not experienced enough to buy that!")
+            elif balance < item['price']:
+                await update.message.reply_text("⚠️ You're too poor to buy that, fuck off you broke bitch!")
+            else:
+                c.execute('''
+                            UPDATE users SET balance = balance - ? WHERE chat_id = ?
+                        ''', (item['price'], chat_id))
+                c.execute('''
+                            SELECT quantity FROM inventory WHERE chat_id = ? AND item_name = ?
+                        ''', (chat_id, item_name))
+                result = c.fetchone()
+                if result:
+                    c.execute('''
+                                UPDATE inventory SET quantity = quantity + 1 WHERE chat_id = ? AND item_name = ?
+                            ''', (chat_id, item_name))
+                else:
+                    c.execute('''
+                                INSERT OR IGNORE INTO inventory (chat_id, item_name, category, price, emoji, quantity) VALUES (?, ?, ?, ?, ?, 1)
+                            ''', (chat_id, item_name, category, item['price'], item['emoji']))
+                await update.message.reply_text(f"🎉 *Nice flex, Boss!* You just bought {item['emoji']} *{item_name}* for €{item['price']:,}! 💸\nYour new balance: €{balance - item['price']:,.2f}\nCheck your haul with /inventory.", parse_mode='Markdown')
