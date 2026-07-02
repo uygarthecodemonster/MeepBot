@@ -27,7 +27,7 @@ from youtube_api import get_random_youtube_video
 from blackjack import shuffle_deck, calculate_score
 
 #Economy imports
-from economy import setup_economy_database, balance, work, profile, apply, promote, leaderboard, shop, buy
+from economy import setup_economy_database, balance, work, profile, apply, promote, leaderboard, shop, buy, inventory
 
 ASKING_USERS, ASKING_MESSAGE, ASKING_MOOD = range(3)
 PLAYING_BLACKJACK = 99
@@ -484,6 +484,9 @@ if __name__ == '__main__':
 
     buy_handler = CommandHandler('buy', buy)
     app.add_handler(buy_handler)
+
+    inventory_handler = CommandHandler('inventory', inventory)
+    app.add_handler(inventory_handler)
 
     app.add_handler(CallbackQueryHandler(handle_button_click))
 

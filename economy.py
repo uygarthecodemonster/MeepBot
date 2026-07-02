@@ -601,7 +601,7 @@ async def shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 lines = []
                 for i, (category, items) in enumerate(ITEMS.items(), 1):
                     category_emoji = CATEGORY_EMOJIS.get(category, "📦")
-                    line = f"{i}. {category_emoji} {category}:"
+                    line = f"{i}. {category_emoji} {category}"
                     lines.append(line)
                 text = "🛍️ *Shop* 🛍️\n\n" + "\n\n".join(lines) + "\n\nUse /shop \[category number\] to browse items.\nExample: /shop 1 for Vehicles"
                 await update.message.reply_text(text, parse_mode='Markdown')
@@ -659,14 +659,40 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         ''', (item['price'], chat_id))
                 c.execute('''
                             SELECT quantity FROM inventory WHERE chat_id = ? AND item_name = ?
-                        ''', (chat_id, item_name))
+                        ''', (chat_id, item["name"]))
                 result = c.fetchone()
                 if result:
                     c.execute('''
                                 UPDATE inventory SET quantity = quantity + 1 WHERE chat_id = ? AND item_name = ?
-                            ''', (chat_id, item_name))
+                            ''', (chat_id, item["name"]))
                 else:
                     c.execute('''
                                 INSERT OR IGNORE INTO inventory (chat_id, item_name, category, price, emoji, quantity) VALUES (?, ?, ?, ?, ?, 1)
-                            ''', (chat_id, item_name, category, item['price'], item['emoji']))
-                await update.message.reply_text(f"🎉 *Nice flex, Boss!* You just bought {item['emoji']} *{item_name}* for €{item['price']:,}! 💸\nYour new balance: €{balance - item['price']:,.2f}\nCheck your haul with /inventory.", parse_mode='Markdown')
+                            ''', (chat_id, item["name"], category, item['price'], item['emoji']))
+                await update.message.reply_text(f"🎉 *Nice flex, Boss!* You just bought {item['emoji']} *{item['name']}* for €{item['price']:,}! 💸\nYour new balance: €{balance - item['price']:,.2f}\nCheck your haul with /inventory.", parse_mode='Markdown')
+
+async def inventory(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_user.id
+    rows = get_inventory(chat_id)
+    if not rows:
+        await update.message.reply_text("🛒 Your inventory is empty, Boss! You are a dead case in terms of flexing. Use /shop to buy some items.")
+    else:
+        grouped_items = {}
+        for item_name, category, price, emoji, quantity in rows:
+            grouped_items.setdefault(category, [])
+            grouped_items[category].append((item_name, price, emoji, quantity))
+        lines = []
+        total_value = 0
+        item_count = 0
+        for category, items in grouped_items.items():
+            category_emoji = CATEGORY_EMOJIS.get(category, "📦")
+            lines.append(f"{category_emoji} *{category}*")
+            for item_name, price, emoji, quantity in items:
+                lines.append(f"{emoji} {item_name} x{quantity} - €{price:,}")
+                total_value += price * quantity
+                item_count += quantity
+            lines.append("") 
+        lines.append("─────────────────")
+        lines.append(f"📊 *Total Value:* €{total_value:,}")
+        lines.append(f"📦 *Total Items:* {item_count}")
+        await update.message.reply_text(f"🎒 *Inventory:*\n\n" + "\n".join(lines), parse_mode='Markdown')
