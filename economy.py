@@ -260,7 +260,7 @@ async def work(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if current_job is None or current_title is None:
                 await update.message.reply_text(f"🚫 You're unemployed, broke, and probably smell like it too 🤢. Nobody's paying you for anything right now, Boss.\nUse /apply to find a job and start earning before you starve! 💸")
                 return
-            work_xp = 10 + (2 * JOBS[current_job]['min_level'])
+            work_xp = 50 + (5 * JOBS[current_job]['min_level'])
             c.execute('''
                 UPDATE users SET balance = ?, hours_worked = ?, last_worked = ?, total_xp = ? WHERE chat_id = ?
             ''', (balance + salary, hours_worked + 1, int(time.time()), total_xp + work_xp, chat_id))
