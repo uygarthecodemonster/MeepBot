@@ -287,8 +287,37 @@ def setup_economy_database():
                 ''')
     except sqlite3.OperationalError:
         pass
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS inventory (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER,
+            item_name TEXT,
+            category TEXT,
+            price INTEGER,
+            emoji TEXT,
+            quantity INTEGER DEFAULT 1)
+        ''')
     conn.commit()
     conn.close()
+
+def get_inventory(chat_id):
+    with sqlite3.connect('meepbot.db') as conn:
+        c = conn.cursor()
+        c.execute('''
+            SELECT item_name, category, price, emoji, quantity FROM inventory WHERE chat_id = ?
+        ''', (chat_id,))
+        inventory = c.fetchall()
+    return inventory
+
+def get_flex_item(chat_id):
+    with sqlite3.connect('meepbot.db') as conn:
+        c = conn.cursor()
+        c.execute('''
+            SELECT item_name, category, price, emoji FROM inventory WHERE chat_id = ? ORDER BY price DESC LIMIT 1
+        ''', (chat_id,))
+        flex_item = c.fetchone()
+    return flex_item
 
 async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_user.id
