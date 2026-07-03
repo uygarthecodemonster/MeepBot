@@ -579,6 +579,12 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
             xp_needed = total_xp
             for n in range(level):
                 xp_needed -= 5 * n**2 + 50 * n + 100
+            flex_item = get_flex_item(row_chat_id)
+            if flex_item:
+                item_name, category, price, item_emoji = flex_item
+                flex_item_display = f"· owns {item_emoji} {item_name}"
+            else:
+                flex_item_display = "· doesn't have a thing to flex"
             if i == 1:
                 emoji = "🥇"
             elif i == 2:
@@ -590,11 +596,15 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
             line = f"{emoji}. 👤{username or first_name} - ⭐Level:{level} ({xp_needed} XP)"
             if row_chat_id == chat_id:
                 line = f"*{line}*"
+                flex_item_display = f"*{flex_item_display}*"
             lines.append(line)
+            lines.append(f"     {flex_item_display}")
+            if i < len(result):
+                lines.append("──────────────────")
         if len(result) < 10:
             for i in range((len(result)) + 1, 11):
                 lines.append(f"{i}. 🪑 Nobody's claimed this spot yet")
-        text = f"🏆 Leaderboard — Top 10 Players 🏆\n\n" + "\n\n".join(lines)
+        text = f"🏆 Leaderboard — Top 10 Players 🏆\n\n" + "\n".join(lines)
         await update.message.reply_text(text, parse_mode='Markdown')
 
 async def shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
