@@ -27,7 +27,7 @@ from youtube_api import get_random_youtube_video
 from blackjack import shuffle_deck, calculate_score
 
 #Economy imports
-from economy import setup_economy_database, balance, work, profile, apply, promote, leaderboard, shop, buy, inventory
+from economy import setup_economy_database, get_balance, update_balance, balance, work, profile, apply, promote, leaderboard, shop, buy, inventory
 
 ASKING_USERS, ASKING_MESSAGE, ASKING_MOOD = range(3)
 PLAYING_BLACKJACK = 99
@@ -273,6 +273,36 @@ async def execute_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def start_blackjack(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_user.id
+    query = update.callback_query
+    if not query:
+        if not context.args:
+            await update.message.reply_text("⚠️ Usage: /blackjack [bet amount]\nExample: /blackjack 100")
+            return ConversationHandler.END
+        else:
+            try:
+                bet_amount = int(context.args[0])
+            except ValueError:
+                await update.message.reply_text("⚠️ You need to enter a valid number for the bet amount. Otherwise, how can you expect to gamble, Boss?")
+                return ConversationHandler.END
+
+            balance = get_balance(chat_id)
+            if balance is None:
+                await update.message.reply_text("⚠️ You don't have an account yet, Boss! What are you planning to gamble with, chipmunk? Use /start to sign yourself up!")
+                return ConversationHandler.END
+
+            if bet_amount <= 0:
+                await update.message.reply_text("⚠️ Haha, did you really think you could bet zero or negative money? Earn some credits to play with first, brokeass!")
+                return ConversationHandler.END
+
+            if bet_amount > balance:
+                await update.message.reply_text(f"⚠️ That bet is out of your league, brokeass! Your current balance is €{balance:.2f}. Go earn more first!")
+                return ConversationHandler.END
+
+            context.user_data['bet_amount'] = bet_amount
+            update_balance(chat_id, -bet_amount)
+
+    bet_amount = context.user_data['bet_amount']
 
     deck = shuffle_deck()
     player_hand = [deck.pop(), deck.pop()]
@@ -284,25 +314,27 @@ async def start_blackjack(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     player_score = calculate_score(player_hand)
     dealer_score = calculate_score(dealer_hand)
-    restart_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Play Again", callback_data='bj_restart')]])
-
-    query = update.callback_query
-
+    
     # Natural blackjack: player has 21 on opening hand
     if player_score == 21:
         dealer_ten_cards = ['10', 'J', 'Q', 'K', 'A']
         if dealer_hand[0] in dealer_ten_cards and dealer_score == 21:
-            result = "🤝 **PUSH! Both got Blackjack!**"
+            update_balance(chat_id, bet_amount) 
+            result = f"🤝 **PUSH! Both got Blackjack!**"
+            payout_line = f"💰 Bet: €{bet_amount:,} → Returned | Balance: €{get_balance(chat_id):,.2f}"
         else:
+            update_balance(chat_id, int(bet_amount * 2.5))
             result = "🃏 **BLACKJACK! You win instantly!**"
+            payout_line = f"💰 Bet: €{bet_amount:,} → Won: €{int(bet_amount * 2.5):,} | Balance: €{get_balance(chat_id):,.2f}"
         text = (f"{result}\n\n"
                 f"👤 **Your Hand:** {', '.join(player_hand)} (Score: {player_score})\n"
                 f"🤖 **Dealer Hand:** {', '.join(dealer_hand)} (Score: {dealer_score})")
+        text += f"\n\n{payout_line}"
         if query:
             await query.answer()
-            await query.edit_message_text(text, reply_markup=restart_keyboard, parse_mode='Markdown')
+            await query.edit_message_text(text, parse_mode='Markdown')
         else:
-            await update.message.reply_text(text, reply_markup=restart_keyboard, parse_mode='Markdown')
+            await update.message.reply_text(text, parse_mode='Markdown')
         return ConversationHandler.END
 
     text = (f"🎰 **Welcome to the MeepBot Casino!**\n\n"
@@ -323,15 +355,16 @@ async def start_blackjack(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return PLAYING_BLACKJACK
 
 async def bj_round(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    chat_id = update.effective_user.id
     query = update.callback_query
     await query.answer()
     choice = query.data
 
+    bet_amount = context.user_data['bet_amount']
     deck = context.user_data['deck']
     player_hand = context.user_data['player_hand']
     dealer_hand = context.user_data['dealer_hand']
-
-    restart_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Play Again", callback_data='bj_restart')]])
 
     if choice == 'bj_hit':
         player_hand.append(deck.pop())
@@ -341,7 +374,8 @@ async def bj_round(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text = (f"💥 **BUST! You went over 21!**\n\n"
                     f"👤 **Your Hand:** {', '.join(player_hand)} (Score: {player_score})\n"
                     f"🤖 **Dealer Hand:** {', '.join(dealer_hand)} (Score: {calculate_score(dealer_hand)})")
-            await query.edit_message_text(text, reply_markup=restart_keyboard, parse_mode='Markdown')
+            text += f"\n\n💰 Bet: €{bet_amount:,} → Lost | Balance: €{get_balance(chat_id):,.2f}"
+            await query.edit_message_text(text, parse_mode='Markdown')
             return ConversationHandler.END
 
         text = (f"🎰 **MeepBot Casino**\n\n"
@@ -363,20 +397,29 @@ async def bj_round(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Player bust always loses — check before comparing scores
         if player_score > 21:
             result = "💸 **YOU BUSTED! DEALER WINS!**"
+            payout_line = f"💰 Bet: €{bet_amount:,} → Lost | Balance: €{get_balance(chat_id):,.2f}"
         elif dealer_score > 21:
+            update_balance(chat_id, bet_amount * 2)
             result = "🎉 **DEALER BUSTS! YOU WIN!**"
+            payout_line = f"💰 Bet: €{bet_amount:,} → Won: €{bet_amount * 2:,} | Balance: €{get_balance(chat_id):,.2f}"
         elif player_score > dealer_score:
+            update_balance(chat_id, bet_amount * 2)
             result = "🎉 **YOU WIN!**"
+            payout_line = f"💰 Bet: €{bet_amount:,} → Won: €{bet_amount * 2:,} | Balance: €{get_balance(chat_id):,.2f}"
         elif player_score < dealer_score:
             result = "💸 **DEALER WINS!**"
+            payout_line = f"💰 Bet: €{bet_amount:,} → Lost | Balance: €{get_balance(chat_id):,.2f}"
         else:
+            update_balance(chat_id, bet_amount)
             result = "🤝 **PUSH (Tie)!**"
+            payout_line = f"💰 Bet: €{bet_amount:,} → Returned | Balance: €{get_balance(chat_id):,.2f}"
 
         text = (f"{result}\n\n"
                 f"👤 **Your Hand:** {', '.join(player_hand)} (Score: {player_score})\n"
                 f"🤖 **Dealer Hand:** {', '.join(dealer_hand)} (Score: {dealer_score})")
+        text += f"\n\n{payout_line}"
 
-        await query.edit_message_text(text, reply_markup=restart_keyboard, parse_mode='Markdown')
+        await query.edit_message_text(text, parse_mode='Markdown')
         return ConversationHandler.END
 
 async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -452,8 +495,7 @@ if __name__ == '__main__':
     app.add_handler(video_handler)
 
     blackjack_handler = ConversationHandler(
-        entry_points=[CommandHandler('blackjack', start_blackjack), 
-                        CallbackQueryHandler(start_blackjack, pattern='^bj_restart$')],
+        entry_points=[CommandHandler('blackjack', start_blackjack)],
         states={
             PLAYING_BLACKJACK: [CallbackQueryHandler(bj_round, pattern='^bj_')]
         },

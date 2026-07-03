@@ -329,18 +329,30 @@ def get_flex_item(chat_id):
         flex_item = c.fetchone()
     return flex_item
 
-async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_user.id
+def get_balance(chat_id):
     with sqlite3.connect('meepbot.db') as conn:
         c = conn.cursor()
         c.execute('''
             SELECT balance FROM users WHERE chat_id = ?
         ''', (chat_id,))
         balance = c.fetchone()
-        if balance is not None:
-            await update.message.reply_text(f"💰 Your current balance is: €{balance[0]:.2f}, Boss!")
-        else:
-            await update.message.reply_text("⚠️ You don't have an account yet, Boss! Use /start to sign yourself up!")
+    return balance[0] if balance else None
+
+def update_balance(chat_id, amount):
+    with sqlite3.connect('meepbot.db') as conn:
+        c = conn.cursor()
+        c.execute('''
+            UPDATE users SET balance = balance + ? WHERE chat_id = ?
+        ''', (amount, chat_id))
+        conn.commit()
+
+async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_user.id
+    balance = get_balance(chat_id)
+    if balance is not None:
+        await update.message.reply_text(f"💰 Your current balance is: €{balance:.2f}, Boss!")
+    else:
+        await update.message.reply_text("⚠️ You don't have an account yet, Boss! Use /start to sign yourself up!")
 
 async def work_ready_notification(context):
     await context.bot.send_message(
